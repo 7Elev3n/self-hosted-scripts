@@ -1,0 +1,188 @@
+# Env Variables. Set in .env file (located in same dir as dcompose.yml)
+# PUID, PGID, TZ, Dockerstuff, 
+# ncAdmin, ncAdminPW, DBuserPW, DBrootPW, 
+# CFemail, CFsite,
+# DIUN stuff (tg token, tg chat_id)
+---
+version: "3.7"
+
+services:
+  sonarr:
+    image: hotio/sonarr:release-3.0.8.1507
+    container_name: sonarr
+    environment:
+        - PUID=${PUID}
+        - PGID=${PGID}
+        - TZ=${TZ} # Ensure port 8989 is open on vpn container (qbt)
+    volumes:
+        - ${Dockerstuff}/arrs/son/config:/config
+        - ${Dockerstuff}/downloads:/downloads
+    restart: unless-stopped
+    depends_on: 
+        - qbittorrent
+    network_mode: service:qbittorrent
+
+  prowlarr:
+    image: cr.hotio.dev/hotio/prowlarr:testing-0.3.0.1730
+    container_name: prowlarr
+    environment:
+        - PUID=${PUID}
+        - PGID=${PGID}
+        - TZ=${TZ} 
+        # Ensure port 9696 is open on vpn container (qbt)
+        # To connect prowlarr to sonarr, need to find eth0 ip from inside the qbt container.
+        # docker exec -it qbittorrent /bin/bash
+        # ifconfig
+        # Copy the inet addr of eth0, e.g. 172.18.0.7 into prowlarr's add app setting. 
+        # What worked for me was http://172.18.0.7:9696 (prowlarr) and http://172.18.0.7:8989 (sonarr)
+    volumes:
+        - ${Dockerstuff}/arrs/prowlarr:/config
+    restart: unless-stopped
+    depends_on: 
+        - qbittorrent
+    network_mode: service:qbittorrent
+
+  qbittorrent:
+    container_name: qbittorrent
+    image: cr.hotio.dev/hotio/qbittorrent:release-4.4.3.1
+    hostname: qbt
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      # - UMASK=002
+      - TZ=${TZ}
+      - VPN_ENABLED=true
+      - VPN_LAN_NETWORK=172.18.0.0/16
+      - VPN_CONF=wg0
+      - VPN_ADDITIONAL_PORTS=8989/tcp,9696/tcp
+      - VPN_IP_CHECK_DELAY=5
+      - PRIVOXY_ENABLED=false
+    volumes:
+      - ${Dockerstuff}/qbt:/config
+      - ${Dockerstuff}/downloads:/downloads
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv6.conf.all.disable_ipv6=1
+    depends_on:
+      - swag
+    networks:
+        qbt_net:
+          ipv4_address: 172.18.0.6
+    restart: unless-stopped
+
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:10.8.0
+    container_name: jellyfin
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - JELLYFIN_PublishedServerUrl=jf.steech.xyz #optional
+    volumes:
+      - ${Dockerstuff}/jellyfin:/config
+      - ${Dockerstuff}/downloads/tv:/data/tvshows
+      - ${Dockerstuff}/downloads/movies:/data/movies
+      - /dev/dri:/dev/dri
+    # ports:
+    #   - 8096:8096
+    #   - 8920:8920 #optional, for https webUI
+    #   - 7359:7359/udp #optional, for JF discovery on LAN
+    #   - 1900:1900/udp #optional, for DLNA
+    restart: unless-stopped
+
+  nextcloud:
+    image: ghcr.io/linuxserver/nextcloud:24.0.1-php8
+    container_name: nextcloud
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - NEXTCLOUD_ADMIN_USER=${ncAdmin}
+      - NEXTCLOUD_ADMIN_PASSWORD=${ncAdminPW}
+      - MYSQL_USER=nextcloud_user
+      - MYSQL_PASSWORD=${DBuserPW}
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_HOST=mariadb
+      - REDIS_HOST=redis
+    volumes:
+      - ${Dockerstuff}/nextcloud/config:/config
+      - ${Dockerstuff}/nextcloud/data:/data
+    restart: unless-stopped
+    depends_on:
+      - swag
+      - mariadb
+      - redis
+  
+  redis:
+    image: redis:alpine3.16
+    container_name: redis
+    restart: unless-stopped
+  
+  mariadb:
+    image: ghcr.io/linuxserver/mariadb:10.5.16
+    container_name: mariadb
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - MYSQL_DATABASE=nextcloud 
+      - MYSQL_USER=nextcloud_user
+      - MYSQL_PASSWORD=${DBuserPW}
+      - MYSQL_ROOT_PASSWORD=${DBrootPW}
+    volumes:
+      - ${Dockerstuff}/mariadb:/config
+    restart: unless-stopped
+  
+  swag:
+    image: ghcr.io/linuxserver/swag:1.28.0
+    container_name: swag
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - URL=${CFsite}
+      - SUBDOMAINS=wildcard
+      - VALIDATION=dns
+      - CERTPROVIDER=zerossl
+      - DNSPLUGIN=cloudflare
+      - EMAIL=${CFemail}
+    volumes:
+      - ${Dockerstuff}/swag:/config
+    ports:
+      - 443:443
+      - 80:80
+    restart: unless-stopped
+
+  diun:
+    image: crazymax/diun:4.21.0
+    container_name: diun
+    hostname: "diun (steech.xyz)"
+    command: serve
+    volumes:
+      - ${Dockerstuff}/diun:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - TZ=${TZ}
+      - "LOG_LEVEL=info"
+      - "LOG_JSON=false"
+      - "DIUN_WATCH_WORKERS=20"
+      - "DIUN_WATCH_SCHEDULE=0 */6 * * *"
+      - "DIUN_PROVIDERS_DOCKER=true"
+      - "DIUN_PROVIDERS_DOCKER_WATCHBYDEFAULT=true"
+      - DIUN_NOTIF_TELEGRAM_TOKEN=${DIUN_NOTIF_TELEGRAM_TOKEN}
+      - DIUN_NOTIF_TELEGRAM_CHATIDS=${DIUN_NOTIF_TELEGRAM_CHATIDS}
+    labels:
+      - "diun.enable=true"
+    restart: always
+
+networks:
+  qbt_net:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: "172.18.0.0/16"

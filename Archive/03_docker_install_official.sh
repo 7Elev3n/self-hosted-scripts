@@ -1,3 +1,5 @@
+## Best to copy and paste the commands below into terminal
+
 sudo apt-get update
 sudo apt-get install \
     ca-certificates \
@@ -36,3 +38,9 @@ sudo loginctl enable-linger dockerboi
 # On original (root) user
 docker run hello-world
 
+# Installing docker compose
+sudo apt-get install docker-compose -y
+
+# Exposing privileged ports <1024
+sudo setcap cap_net_bind_service=ep $(which rootlesskit)
+systemctl --user restart docker

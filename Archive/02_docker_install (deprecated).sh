@@ -1,3 +1,6 @@
+## Deprecated, this was a hack method to get docker on ubuntu 21.10
+
+
 ## Adapted from https://gist.github.com/pablodz/daa8ff298663cc4f88cf2cfc966bbede#file-install_docker_in_ubuntu_21-10-sh
 
 echo Uninstalling old docker versions and updating repos..

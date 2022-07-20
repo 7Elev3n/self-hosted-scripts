@@ -1,0 +1,8 @@
+tunnel: bb46eb94-dd62-49a9-acbc-3936d4804782
+credentials-file: /home/dockerboi/.cloudflared/bb46eb94-dd62-49a9-acbc-3936d4804782.json
+originRequest:
+  originServerName: steech.xyz
+ingress:
+  - hostname: nc.steech.xyz
+    service: http://localhost:443
+  - service: http://localhost:404
